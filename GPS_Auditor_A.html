@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPS Route Auditor</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-primary: #080c14;
+  --bg-secondary: #0d1320;
+  --bg-card: #111827;
+  --bg-input: #1a2235;
+  --border: #1e2d44;
+  --border-focus: #00b4d8;
+  --accent: #00d4ff;
+  --accent-dim: #0090a8;
+  --accent-glow: rgba(0,212,255,0.15);
+  --text-primary: #e2e8f0;
+  --text-secondary: #8899aa;
+  --text-muted: #556677;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --stop-color: #f43f5e;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ═══ PASSWORD GATE ═══ */
+#gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg-primary);
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(0,180,216,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(0,212,255,0.04) 0%, transparent 50%);
+}
+
+.gate-box {
+  text-align: center;
+  padding: 48px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 380px;
+}
+
+.gate-box h1 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--accent);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.gate-box .subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 32px;
+  letter-spacing: 1px;
+}
+
+.gate-box input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  text-align: center;
+  letter-spacing: 4px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.gate-box input:focus { border-color: var(--accent); }
+.gate-box input::placeholder { letter-spacing: 1px; color: var(--text-muted); }
+
+.gate-error {
+  color: var(--danger);
+  font-size: 12px;
+  margin-top: 12px;
+  height: 16px;
+}
+
+.gate-btn {
+  margin-top: 20px;
+  width: 100%;
+  padding: 12px;
+  background: var(--accent-dim);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.gate-btn:hover { background: var(--accent); color: var(--bg-primary); }
+
+/* ═══ MAIN APP ═══ */
+#app { display: none; height: 100vh; flex-direction: column; }
+
+/* HEADER */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 52px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.header-brand {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.header-actions { display: flex; gap: 8px; }
+
+.btn {
+  padding: 7px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn-accent { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
+.btn-accent:hover { background: var(--accent); color: var(--bg-primary); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* LAYOUT */
+.main-content { display: flex; flex: 1; overflow: hidden; }
+
+/* SIDEBAR */
+.sidebar {
+  width: 340px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-section h3 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+/* UPLOAD ZONE */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.upload-zone .icon { font-size: 28px; margin-bottom: 8px; }
+.upload-zone .label { font-size: 13px; color: var(--text-secondary); }
+.upload-zone .hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+.file-loaded {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.3);
+  border-radius: 8px;
+}
+
+.file-loaded .name { font-size: 12px; font-weight: 600; color: var(--success); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.file-loaded .rows { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-muted); }
+.file-loaded .remove { cursor:pointer; color:var(--text-muted); font-size:16px; }
+.file-loaded .remove:hover { color:var(--danger); }
+
+/* COLUMN MAPPING */
+.mapping-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.mapping-row label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.mapping-row .req { color: var(--danger); }
+
+.mapping-row select {
+  flex: 1;
+  padding: 7px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.mapping-row select:focus { border-color: var(--accent); }
+.mapping-row .auto-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  padding: 2px 6px;
+  background: rgba(0,212,255,0.15);
+  color: var(--accent);
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+/* CONFIG */
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.config-row label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.config-row input[type=range] {
+  width: 100px;
+  accent-color: var(--accent);
+}
+
+.config-row .val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  width: 52px;
+  text-align: right;
+}
+
+/* SUMMARY PANEL */
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.stat-card {
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.stat-card .stat-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.stat-card .stat-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.stat-card.full { grid-column: 1 / -1; }
+
+/* STOPS LIST */
+.stops-list { max-height: 200px; overflow-y: auto; }
+
+.stop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.stop-item:hover { border-color: var(--stop-color); }
+.stop-item .dot { width:8px; height:8px; border-radius:50%; background:var(--stop-color); flex-shrink:0; }
+.stop-item .info { flex:1; }
+.stop-item .time { font-size:11px; font-weight:600; color:var(--text-primary); }
+.stop-item .dur { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--stop-color); }
+.stop-item .coords { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-muted); }
+
+/* SPEED ALERTS */
+.speed-alert-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.speed-alert-item:hover { border-color: var(--warning); }
+.speed-alert-item .dot { width:8px; height:8px; border-radius:50%; background:var(--warning); flex-shrink:0; }
+.speed-alert-item .info { flex:1; }
+.speed-alert-item .spd { font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--warning); font-weight:700; }
+.speed-alert-item .time { font-size:11px; color:var(--text-secondary); }
+
+/* MAP */
+.map-container { flex: 1; position: relative; }
+#map { width: 100%; height: 100%; background: var(--bg-primary); }
+
+/* PREVIEW TABLE */
+.preview-wrap { overflow-x: auto; }
+.preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.preview-table th {
+  background: var(--bg-input);
+  padding: 6px 10px;
+  text-align: left;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+}
+
+/* LEGEND */
+.legend {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 11px;
+}
+
+.legend h4 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.legend-item { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.legend-swatch { width:24px; height:4px; border-radius:2px; }
+
+/* EMPTY STATE */
+.empty-map {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+}
+
+.empty-map .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+.empty-map .msg { font-size: 14px; }
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* TOAST */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  padding: 10px 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  z-index: 9999;
+  transition: transform 0.3s ease;
+  pointer-events: none;
+}
+
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* SPEED THRESHOLD CONFIG */
+.speed-max-row { margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<!-- ═══ PASSWORD GATE ═══ -->
+<div id="gate">
+  <div class="gate-box">
+    <h1>GPS Auditor</h1>
+    <p class="subtitle">Route Analysis System</p>
+    <input type="password" id="passInput" placeholder="Contraseña" autofocus>
+    <div class="gate-error" id="gateError"></div>
+    <button class="gate-btn" onclick="checkPass()">Acceder</button>
+  </div>
+</div>
+
+<!-- ═══ MAIN APP ═══ -->
+<div id="app">
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-brand">◈ GPS Auditor</div>
+    <div class="header-actions">
+      <button class="btn" id="btnExportGeoJSON" disabled onclick="exportGeoJSON()">⤓ GeoJSON</button>
+      <button class="btn" id="btnExportKML" disabled onclick="exportKML()">⤓ KML</button>
+      <button class="btn btn-accent" id="btnProcess" disabled onclick="processData()">▶ Procesar</button>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+
+      <!-- UPLOAD -->
+      <div class="sidebar-section">
+        <h3>① Archivo</h3>
+        <div id="uploadZone" class="upload-zone">
+          <div class="icon">📂</div>
+          <div class="label">Arrastrá o hacé click para cargar</div>
+          <div class="hint">.xlsx / .xls / .csv</div>
+        </div>
+        <div id="fileInfo" style="display:none"></div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
+      </div>
+
+      <!-- PREVIEW -->
+      <div class="sidebar-section" id="previewSection" style="display:none">
+        <h3>Vista previa</h3>
+        <div class="preview-wrap" id="previewWrap"></div>
+      </div>
+
+      <!-- COLUMN MAPPING -->
+      <div class="sidebar-section" id="mappingSection" style="display:none">
+        <h3>② Mapeo de columnas</h3>
+        <div class="mapping-row">
+          <label>Fecha <span class="req">*</span></label>
+          <select id="colDate"><option value="">— seleccionar —</option></select>
+          <span class="auto-badge" id="badgeDate" style="display:none">AUTO</span>
+        </div>
+        <div class="mapping-row">
+          <label>Latitud <span class="req">*</span></label>
+          <select id="colLat"><option value="">— seleccionar —</option></select>
+          <span class="auto-badge" id="badgeLat" style="display:none">AUTO</span>
+        </div>
+        <div class="mapping-row">
+          <label>Longitud <span class="req">*</span></label>
+          <select id="colLon"><option value="">— seleccionar —</option></select>
+          <span class="auto-badge" id="badgeLon" style="display:none">AUTO</span>
+        </div>
+        <div class="mapping-row">
+          <label>Velocidad</label>
+          <select id="colSpeed"><option value="">— ninguna —</option></select>
+          <span class="auto-badge" id="badgeSpeed" style="display:none">AUTO</span>
+        </div>
+      </div>
+
+      <!-- CONFIG -->
+      <div class="sidebar-section" id="configSection" style="display:none">
+        <h3>③ Configuración</h3>
+        <div class="config-row">
+          <label>Vel. mínima promedio</label>
+          <input type="range" id="cfgMinSpeed" min="1" max="30" value="9">
+          <span class="val" id="valMinSpeed">9 km/h</span>
+        </div>
+        <div class="config-row">
+          <label>Parada mínima</label>
+          <input type="range" id="cfgStopMin" min="1" max="30" value="5">
+          <span class="val" id="valStopMin">5 min</span>
+        </div>
+        <div class="config-row speed-max-row">
+          <label>Alerta velocidad máx.</label>
+          <input type="range" id="cfgMaxSpeed" min="30" max="200" value="100" step="5">
+          <span class="val" id="valMaxSpeed">100 km/h</span>
+        </div>
+      </div>
+
+      <!-- SUMMARY -->
+      <div class="sidebar-section" id="summarySection" style="display:none">
+        <h3>Resumen</h3>
+        <div class="summary-grid" id="summaryGrid"></div>
+      </div>
+
+      <!-- STOPS -->
+      <div class="sidebar-section" id="stopsSection" style="display:none">
+        <h3>Paradas detectadas</h3>
+        <div class="stops-list" id="stopsList"></div>
+      </div>
+
+      <!-- SPEED ALERTS -->
+      <div class="sidebar-section" id="speedAlertsSection" style="display:none">
+        <h3>Alertas de velocidad</h3>
+        <div class="stops-list" id="speedAlertsList"></div>
+      </div>
+
+    </div>
+
+    <!-- MAP -->
+    <div class="map-container">
+      <div id="emptyMap" class="empty-map">
+        <div class="icon">🗺️</div>
+        <div class="msg">Cargá un archivo para visualizar el recorrido</div>
+      </div>
+      <div id="map" style="display:none"></div>
+      <div class="legend" id="legend" style="display:none">
+        <h4>Velocidad</h4>
+        <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span> Detenido / Lento</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#f59e0b"></span> Moderado</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#10b981"></span> Normal</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#3b82f6"></span> Rápido</div>
+        <div class="legend-item" id="legendAlert" style="display:none"><span class="legend-swatch" style="background:#a855f7"></span> Exceso</div>
+        <div style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">
+          <div class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--success);"></span> Inicio</div>
+          <div class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--danger);"></span> Fin</div>
+          <div class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--stop-color);border:2px solid #fff;"></span> Parada</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════
+// PASSWORD
+// ═══════════════════════════════════════
+const APP_PASS = 'audit2026';
+
+document.getElementById('passInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') checkPass();
+});
+
+function checkPass() {
+  const v = document.getElementById('passInput').value;
+  if (v === APP_PASS) {
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    initMap();
+  } else {
+    document.getElementById('gateError').textContent = 'Contraseña incorrecta';
+    document.getElementById('passInput').value = '';
+    document.getElementById('passInput').focus();
+  }
+}
+
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+let rawData = null;      // array of objects from Excel
+let columns = [];        // column names
+let map = null;
+let mapLayers = [];
+
+// ═══════════════════════════════════════
+// MAP INIT
+// ═══════════════════════════════════════
+function initMap() {
+  // Lazy init — called after gate clears
+}
+
+// ═══════════════════════════════════════
+// FILE HANDLING
+// ═══════════════════════════════════════
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['xlsx','xls','csv'].includes(ext)) {
+    toast('Formato no soportado. Usá .xlsx, .xls o .csv');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type:'array', cellDates:true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      rawData = XLSX.utils.sheet_to_json(ws, { defval: null });
+
+      if (!rawData.length) { toast('El archivo está vacío'); return; }
+
+      columns = Object.keys(rawData[0]);
+      showFileLoaded(file.name, rawData.length);
+      showPreview();
+      showMapping();
+      showConfig();
+    } catch (err) {
+      toast('Error leyendo archivo: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showFileLoaded(name, rows) {
+  uploadZone.style.display = 'none';
+  const fi = document.getElementById('fileInfo');
+  fi.style.display = 'block';
+  fi.innerHTML = `<div class="file-loaded">
+    <span class="name">📄 ${name}</span>
+    <span class="rows">${rows} filas</span>
+    <span class="remove" onclick="resetFile()">✕</span>
+  </div>`;
+}
+
+function resetFile() {
+  rawData = null;
+  columns = [];
+  document.getElementById('fileInfo').style.display = 'none';
+  uploadZone.style.display = '';
+  fileInput.value = '';
+  ['previewSection','mappingSection','configSection','summarySection','stopsSection','speedAlertsSection'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  document.getElementById('btnProcess').disabled = true;
+  document.getElementById('btnExportGeoJSON').disabled = true;
+  document.getElementById('btnExportKML').disabled = true;
+  clearMap();
+}
+
+// ═══════════════════════════════════════
+// PREVIEW
+// ═══════════════════════════════════════
+function showPreview() {
+  const section = document.getElementById('previewSection');
+  section.style.display = '';
+  const wrap = document.getElementById('previewWrap');
+  const rows = rawData.slice(0, 5);
+  let html = '<table class="preview-table"><thead><tr>';
+  columns.forEach(c => html += `<th>${c}</th>`);
+  html += '</tr></thead><tbody>';
+  rows.forEach(r => {
+    html += '<tr>';
+    columns.forEach(c => {
+      let v = r[c];
+      if (v instanceof Date) v = formatDate(v);
+      else if (v === null || v === undefined) v = '—';
+      html += `<td>${v}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function formatDate(d) {
+  if (!(d instanceof Date) || isNaN(d)) return '—';
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mi = String(d.getMinutes()).padStart(2,'0');
+  return `${dd}/${mm}/${yy} ${hh}:${mi}`;
+}
+
+// ═══════════════════════════════════════
+// COLUMN MAPPING + AUTO-DETECT
+// ═══════════════════════════════════════
+const PATTERNS = {
+  date: [/fecha/i, /date/i, /time/i, /hora/i, /f\/h/i, /timestamp/i, /datetime/i, /fh/i, /reporte/i],
+  lat:  [/latitud/i, /lat$/i, /^lat/i, /latitude/i],
+  lon:  [/longitud/i, /lon$/i, /^lon/i, /lng/i, /longitude/i, /long$/i],
+  speed:[/velocidad/i, /speed/i, /vel$/i, /^vel/i, /kmh/i, /km\/h/i]
+};
+
+function autoDetect(type) {
+  for (const col of columns) {
+    for (const pat of PATTERNS[type]) {
+      if (pat.test(col)) return col;
+    }
+  }
+  return '';
+}
+
+function showMapping() {
+  const section = document.getElementById('mappingSection');
+  section.style.display = '';
+
+  const fields = [
+    { sel:'colDate', badge:'badgeDate', type:'date' },
+    { sel:'colLat',  badge:'badgeLat',  type:'lat' },
+    { sel:'colLon',  badge:'badgeLon',  type:'lon' },
+    { sel:'colSpeed',badge:'badgeSpeed',type:'speed' }
+  ];
+
+  fields.forEach(f => {
+    const select = document.getElementById(f.sel);
+    const badge = document.getElementById(f.badge);
+    // Clear existing options except first
+    while (select.options.length > 1) select.remove(1);
+    columns.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      select.appendChild(opt);
+    });
+
+    const detected = autoDetect(f.type);
+    if (detected) {
+      select.value = detected;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+
+    select.addEventListener('change', () => {
+      badge.style.display = 'none';
+      checkReady();
+    });
+  });
+
+  checkReady();
+}
+
+function checkReady() {
+  const d = document.getElementById('colDate').value;
+  const la = document.getElementById('colLat').value;
+  const lo = document.getElementById('colLon').value;
+  document.getElementById('btnProcess').disabled = !(d && la && lo);
+}
+
+// ═══════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════
+function showConfig() {
+  document.getElementById('configSection').style.display = '';
+
+  const cfgMinSpeed = document.getElementById('cfgMinSpeed');
+  const cfgStopMin = document.getElementById('cfgStopMin');
+  const cfgMaxSpeed = document.getElementById('cfgMaxSpeed');
+
+  cfgMinSpeed.oninput = () => document.getElementById('valMinSpeed').textContent = cfgMinSpeed.value + ' km/h';
+  cfgStopMin.oninput = () => document.getElementById('valStopMin').textContent = cfgStopMin.value + ' min';
+  cfgMaxSpeed.oninput = () => document.getElementById('valMaxSpeed').textContent = cfgMaxSpeed.value + ' km/h';
+}
+
+// ═══════════════════════════════════════
+// PROCESSING
+// ═══════════════════════════════════════
+function processData() {
+  const colDate = document.getElementById('colDate').value;
+  const colLat = document.getElementById('colLat').value;
+  const colLon = document.getElementById('colLon').value;
+  const colSpeed = document.getElementById('colSpeed').value;
+  const minSpeed = parseInt(document.getElementById('cfgMinSpeed').value);
+  const stopMinutes = parseInt(document.getElementById('cfgStopMin').value);
+  const maxSpeed = parseInt(document.getElementById('cfgMaxSpeed').value);
+
+  // Parse and clean
+  let points = [];
+  for (const row of rawData) {
+    let dt = row[colDate];
+    if (typeof dt === 'string') dt = parseFlexDate(dt);
+    else if (dt instanceof Date && !isNaN(dt)) { /* ok */ }
+    else continue;
+
+    if (!(dt instanceof Date) || isNaN(dt)) continue;
+
+    const lat = parseFloat(row[colLat]);
+    const lon = parseFloat(row[colLon]);
+    if (isNaN(lat) || isNaN(lon)) continue;
+    if (lat === 0 && lon === 0) continue;
+
+    let spd = colSpeed ? parseFloat(row[colSpeed]) : null;
+    if (spd !== null && isNaN(spd)) spd = null;
+
+    points.push({ dt, lat, lon, spd });
+  }
+
+  // Sort by date
+  points.sort((a, b) => a.dt - b.dt);
+
+  // Remove consecutive duplicates
+  points = points.filter((p, i) => i === 0 || p.lat !== points[i-1].lat || p.lon !== points[i-1].lon);
+
+  if (points.length < 2) { toast('No hay suficientes puntos válidos (mínimo 2)'); return; }
+
+  // Calculate distances & detect stops
+  let totalDist = 0;
+  const stops = [];
+  const speedAlerts = [];
+  let stopStart = null;
+
+  for (let i = 0; i < points.length; i++) {
+    if (i > 0) {
+      points[i].dist = haversine(points[i-1].lat, points[i-1].lon, points[i].lat, points[i].lon);
+      totalDist += points[i].dist;
+      points[i].elapsed = (points[i].dt - points[i-1].dt) / 1000; // seconds
+    } else {
+      points[i].dist = 0;
+      points[i].elapsed = 0;
+    }
+
+    // Speed alerts
+    if (points[i].spd !== null && points[i].spd > maxSpeed) {
+      speedAlerts.push({
+        idx: i,
+        lat: points[i].lat,
+        lon: points[i].lon,
+        spd: points[i].spd,
+        dt: points[i].dt
+      });
+    }
+
+    // Stop detection
+    const isStationary = points[i].spd !== null ? points[i].spd < 2 :
+      (i > 0 ? points[i].dist < 0.02 : false); // < 20m
+
+    if (isStationary && !stopStart) {
+      stopStart = i;
+    } else if (!isStationary && stopStart !== null) {
+      const durMin = (points[i-1].dt - points[stopStart].dt) / 60000;
+      if (durMin >= stopMinutes) {
+        stops.push({
+          startIdx: stopStart,
+          endIdx: i - 1,
+          lat: points[stopStart].lat,
+          lon: points[stopStart].lon,
+          startTime: points[stopStart].dt,
+          endTime: points[i-1].dt,
+          duration: durMin
+        });
+      }
+      stopStart = null;
+    }
+  }
+
+  // Check if still stopped at end
+  if (stopStart !== null) {
+    const durMin = (points[points.length-1].dt - points[stopStart].dt) / 60000;
+    if (durMin >= stopMinutes) {
+      stops.push({
+        startIdx: stopStart,
+        endIdx: points.length - 1,
+        lat: points[stopStart].lat,
+        lon: points[stopStart].lon,
+        startTime: points[stopStart].dt,
+        endTime: points[points.length-1].dt,
+        duration: durMin
+      });
+    }
+  }
+
+  // Speed stats
+  const withSpeed = points.filter(p => p.spd !== null && p.spd >= minSpeed);
+  const avgSpeed = withSpeed.length ? withSpeed.reduce((s,p) => s + p.spd, 0) / withSpeed.length : null;
+  const maxSpeedFound = points.reduce((m,p) => p.spd !== null ? Math.max(m, p.spd) : m, 0);
+
+  const totalTime = points[points.length-1].dt - points[0].dt;
+
+  // Render
+  renderSummary(points, totalDist, totalTime, avgSpeed, maxSpeedFound, stops, minSpeed);
+  renderStops(stops);
+  renderSpeedAlerts(speedAlerts);
+  renderMap(points, stops, speedAlerts, maxSpeed);
+
+  document.getElementById('btnExportGeoJSON').disabled = false;
+  document.getElementById('btnExportKML').disabled = false;
+
+  // Store for export
+  window._points = points;
+  window._stops = stops;
+
+  toast('Recorrido procesado: ' + points.length + ' puntos, ' + stops.length + ' paradas');
+}
+
+// ═══════════════════════════════════════
+// DATE PARSING
+// ═══════════════════════════════════════
+function parseFlexDate(s) {
+  if (!s) return null;
+  s = String(s).trim();
+
+  // Try ISO first
+  let d = new Date(s);
+  if (!isNaN(d)) return d;
+
+  // DD/MM/YYYY HH:mm or DD-MM-YYYY HH:mm
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    return new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1]),
+                    parseInt(m[4]), parseInt(m[5]), parseInt(m[6]||0));
+  }
+
+  // YYYY/MM/DD or YYYY-MM-DD
+  const m2 = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\s*(\d{1,2})?:?(\d{2})?:?(\d{2})?/);
+  if (m2) {
+    return new Date(parseInt(m2[1]), parseInt(m2[2])-1, parseInt(m2[3]),
+                    parseInt(m2[4]||0), parseInt(m2[5]||0), parseInt(m2[6]||0));
+  }
+
+  return null;
+}
+
+// ═══════════════════════════════════════
+// HAVERSINE
+// ═══════════════════════════════════════
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ═══════════════════════════════════════
+// SPEED → COLOR
+// ═══════════════════════════════════════
+function speedColor(spd, maxAlert) {
+  if (spd === null) return '#3b82f6';
+  if (spd > maxAlert) return '#a855f7';
+  if (spd < 5) return '#ef4444';
+  if (spd < 30) return '#f59e0b';
+  if (spd < 80) return '#10b981';
+  return '#3b82f6';
+}
+
+// ═══════════════════════════════════════
+// RENDER SUMMARY
+// ═══════════════════════════════════════
+function renderSummary(points, dist, time, avgSpd, maxSpd, stops, minSpd) {
+  document.getElementById('summarySection').style.display = '';
+  const grid = document.getElementById('summaryGrid');
+
+  const startDt = points[0].dt;
+  const endDt = points[points.length-1].dt;
+  const hrs = Math.floor(time / 3600000);
+  const mins = Math.floor((time % 3600000) / 60000);
+
+  grid.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Inicio</div>
+      <div class="stat-value">${formatDate(startDt)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Fin</div>
+      <div class="stat-value">${formatDate(endDt)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Duración</div>
+      <div class="stat-value">${hrs}h ${mins}m</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Distancia</div>
+      <div class="stat-value">${dist.toFixed(1)} km</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Vel. promedio (≥${minSpd})</div>
+      <div class="stat-value">${avgSpd !== null ? avgSpd.toFixed(1) + ' km/h' : 'N/D'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Vel. máxima</div>
+      <div class="stat-value">${maxSpd > 0 ? maxSpd.toFixed(1) + ' km/h' : 'N/D'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Puntos</div>
+      <div class="stat-value">${points.length}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Paradas</div>
+      <div class="stat-value" style="color:${stops.length ? 'var(--stop-color)' : 'var(--text-primary)'}">${stops.length}</div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════
+// RENDER STOPS
+// ═══════════════════════════════════════
+function renderStops(stops) {
+  const section = document.getElementById('stopsSection');
+  const list = document.getElementById('stopsList');
+
+  if (!stops.length) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = '';
+  list.innerHTML = stops.map((s, i) => `
+    <div class="stop-item" onclick="flyTo(${s.lat}, ${s.lon}, 17)">
+      <span class="dot"></span>
+      <div class="info">
+        <div class="time">${formatDate(s.startTime)}</div>
+        <div class="coords">${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}</div>
+      </div>
+      <span class="dur">${Math.round(s.duration)}m</span>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════
+// RENDER SPEED ALERTS
+// ═══════════════════════════════════════
+function renderSpeedAlerts(alerts) {
+  const section = document.getElementById('speedAlertsSection');
+  const list = document.getElementById('speedAlertsList');
+
+  if (!alerts.length) {
+    section.style.display = 'none';
+    document.getElementById('legendAlert').style.display = 'none';
+    return;
+  }
+
+  section.style.display = '';
+  document.getElementById('legendAlert').style.display = '';
+  list.innerHTML = alerts.map(a => `
+    <div class="speed-alert-item" onclick="flyTo(${a.lat}, ${a.lon}, 17)">
+      <span class="dot"></span>
+      <div class="info">
+        <div class="time">${formatDate(a.dt)}</div>
+      </div>
+      <span class="spd">${a.spd.toFixed(0)} km/h</span>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════
+// MAP RENDERING
+// ═══════════════════════════════════════
+function clearMap() {
+  if (!map) return;
+  mapLayers.forEach(l => map.removeLayer(l));
+  mapLayers = [];
+  document.getElementById('map').style.display = 'none';
+  document.getElementById('emptyMap').style.display = '';
+  document.getElementById('legend').style.display = 'none';
+}
+
+function flyTo(lat, lon, zoom) {
+  if (map) map.flyTo([lat, lon], zoom || 16);
+}
+
+function renderMap(points, stops, speedAlerts, maxAlert) {
+  document.getElementById('emptyMap').style.display = 'none';
+  const mapDiv = document.getElementById('map');
+  mapDiv.style.display = '';
+  document.getElementById('legend').style.display = '';
+
+  if (!map) {
+    map = L.map('map', { zoomControl: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19
+    }).addTo(map);
+  }
+
+  // Clear previous
+  mapLayers.forEach(l => map.removeLayer(l));
+  mapLayers = [];
+
+  // Route segments colored by speed
+  for (let i = 1; i < points.length; i++) {
+    const spd = points[i].spd !== null ? points[i].spd : (points[i-1].spd !== null ? points[i-1].spd : null);
+    const color = speedColor(spd, maxAlert);
+    const seg = L.polyline(
+      [[points[i-1].lat, points[i-1].lon], [points[i].lat, points[i].lon]],
+      { color, weight: 4, opacity: 0.85 }
+    );
+    seg.addTo(map);
+    mapLayers.push(seg);
+  }
+
+  // Click points with popups (sample every N for performance)
+  const step = points.length > 2000 ? Math.floor(points.length / 500) : 1;
+  for (let i = 0; i < points.length; i += step) {
+    const p = points[i];
+    const circle = L.circleMarker([p.lat, p.lon], {
+      radius: 3,
+      fillColor: speedColor(p.spd, maxAlert),
+      fillOpacity: 0.7,
+      stroke: false
+    });
+    circle.bindPopup(`
+      <div style="font-family:'JetBrains Mono',monospace; font-size:12px; line-height:1.6;">
+        <b>Punto #${i + 1}</b><br>
+        📅 ${formatDate(p.dt)}<br>
+        📍 ${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}<br>
+        ${p.spd !== null ? '🚗 ' + p.spd.toFixed(1) + ' km/h' : ''}
+        ${p.dist ? '<br>📏 ' + (p.dist * 1000).toFixed(0) + 'm del anterior' : ''}
+      </div>
+    `, { className: 'dark-popup' });
+    circle.addTo(map);
+    mapLayers.push(circle);
+  }
+
+  // Start marker
+  const startMarker = L.circleMarker([points[0].lat, points[0].lon], {
+    radius: 10, fillColor: '#10b981', fillOpacity: 1, color: '#fff', weight: 2
+  }).bindPopup(`<b>INICIO</b><br>${formatDate(points[0].dt)}`);
+  startMarker.addTo(map);
+  mapLayers.push(startMarker);
+
+  // End marker
+  const endMarker = L.circleMarker([points[points.length-1].lat, points[points.length-1].lon], {
+    radius: 10, fillColor: '#ef4444', fillOpacity: 1, color: '#fff', weight: 2
+  }).bindPopup(`<b>FIN</b><br>${formatDate(points[points.length-1].dt)}`);
+  endMarker.addTo(map);
+  mapLayers.push(endMarker);
+
+  // Stop markers
+  stops.forEach((s, i) => {
+    const stopMarker = L.circleMarker([s.lat, s.lon], {
+      radius: 8, fillColor: '#f43f5e', fillOpacity: 0.9, color: '#fff', weight: 2
+    }).bindPopup(`
+      <div style="font-family:'JetBrains Mono',monospace; font-size:12px; line-height:1.6;">
+        <b>PARADA #${i+1}</b><br>
+        ⏱ ${Math.round(s.duration)} minutos<br>
+        📅 ${formatDate(s.startTime)} → ${formatDate(s.endTime)}<br>
+        📍 ${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}
+      </div>
+    `);
+    stopMarker.addTo(map);
+    mapLayers.push(stopMarker);
+  });
+
+  // Speed alert markers
+  speedAlerts.forEach(a => {
+    const alertMarker = L.circleMarker([a.lat, a.lon], {
+      radius: 6, fillColor: '#a855f7', fillOpacity: 0.9, color: '#fff', weight: 1
+    }).bindPopup(`
+      <div style="font-family:'JetBrains Mono',monospace; font-size:12px;">
+        <b>⚠ EXCESO</b><br>
+        🚗 ${a.spd.toFixed(0)} km/h<br>
+        📅 ${formatDate(a.dt)}
+      </div>
+    `);
+    alertMarker.addTo(map);
+    mapLayers.push(alertMarker);
+  });
+
+  // Fit bounds
+  const bounds = L.latLngBounds(points.map(p => [p.lat, p.lon]));
+  map.fitBounds(bounds, { padding: [40, 40] });
+}
+
+// ═══════════════════════════════════════
+// EXPORTS
+// ═══════════════════════════════════════
+function exportGeoJSON() {
+  if (!window._points) return;
+  const geojson = {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: window._points.map(p => [p.lon, p.lat])
+      },
+      properties: { name: 'Recorrido' }
+    }]
+  };
+
+  // Add stops as points
+  (window._stops || []).forEach((s, i) => {
+    geojson.features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
+      properties: {
+        name: `Parada #${i+1}`,
+        duration_min: Math.round(s.duration),
+        start: s.startTime.toISOString(),
+        end: s.endTime.toISOString()
+      }
+    });
+  });
+
+  downloadFile(JSON.stringify(geojson, null, 2), 'recorrido.geojson', 'application/geo+json');
+  toast('GeoJSON exportado');
+}
+
+function exportKML() {
+  if (!window._points) return;
+  const coords = window._points.map(p => `${p.lon},${p.lat},0`).join('\n');
+  const stopPlacemarks = (window._stops || []).map((s, i) => `
+    <Placemark>
+      <name>Parada #${i+1} (${Math.round(s.duration)}min)</name>
+      <Point><coordinates>${s.lon},${s.lat},0</coordinates></Point>
+    </Placemark>
+  `).join('');
+
+  const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Recorrido GPS Audit</name>
+  <Placemark>
+    <name>Recorrido</name>
+    <LineString>
+      <coordinates>${coords}</coordinates>
+    </LineString>
+    <Style><LineStyle><color>ff0000ff</color><width>4</width></LineStyle></Style>
+  </Placemark>
+  ${stopPlacemarks}
+</Document>
+</kml>`;
+
+  downloadFile(kml, 'recorrido.kml', 'application/vnd.google-earth.kml+xml');
+  toast('KML exportado');
+}
+
+function downloadFile(content, name, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
