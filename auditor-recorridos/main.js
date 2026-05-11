@@ -1,9 +1,10 @@
 const { app, BrowserWindow, dialog } = require('electron');
+const https = require('https');
 
 // ═══════════════════════════════════════════════════════
 // LÍNEA QUE CAMBIÁS: pegá acá tu URL de GitHub Raw
 // ═══════════════════════════════════════════════════════
-const LICENCIA_URL = 'https://github.com/Gustavo1986-2015/Auditor_Recorridos_SIMON/blob/main/auditor-recorridos/licencia.json';
+const LICENCIA_URL = 'https://raw.githubusercontent.com/Gustavo1986-2015/Auditor_Recorridos_SIMON/refs/heads/main/auditor-recorridos/licencia.json';
 
 // ═══════════════════════════════════════════════════════
 // SI NO HAY INTERNET: true = deja abrir / false = bloquea
@@ -11,14 +12,23 @@ const LICENCIA_URL = 'https://github.com/Gustavo1986-2015/Auditor_Recorridos_SIM
 const PERMITIR_SIN_INTERNET = true;
 
 
-async function verificarLicencia() {
-  try {
-    const response = await fetch(LICENCIA_URL, { cache: 'no-store' });
-    const data = await response.json();
-    return data.estado === 'activo';
-  } catch {
-    return PERMITIR_SIN_INTERNET;
-  }
+function verificarLicencia() {
+  return new Promise((resolve) => {
+    const req = https.get(LICENCIA_URL, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve(json.estado === 'activo');
+        } catch {
+          resolve(PERMITIR_SIN_INTERNET);
+        }
+      });
+    });
+    req.on('error', () => resolve(PERMITIR_SIN_INTERNET));
+    req.setTimeout(5000, () => { req.destroy(); resolve(PERMITIR_SIN_INTERNET); });
+  });
 }
 
 async function createWindow() {
@@ -27,7 +37,7 @@ async function createWindow() {
   if (!autorizado) {
     dialog.showErrorBox(
       'Acceso no autorizado',
-      'Esta version ha sido desactivada.\nContacta al administrador para mas informacion.'
+      'Esta version ha sido desactivada.\nContacta al administrador.'
     );
     app.quit();
     return;
@@ -40,7 +50,7 @@ async function createWindow() {
     title: 'Auditor de Recorridos'
   });
 
-  win.loadFile('public/GPS_Auditor_G.html');
+  win.loadFile('public/GPS_Auditor_H.html');
 }
 
 app.whenReady().then(createWindow);
