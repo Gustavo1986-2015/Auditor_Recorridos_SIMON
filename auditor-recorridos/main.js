@@ -3,7 +3,7 @@ const { app, BrowserWindow, dialog } = require('electron');
 // ═══════════════════════════════════════════════════════
 // LÍNEA QUE CAMBIÁS: pegá acá tu URL de GitHub Raw
 // ═══════════════════════════════════════════════════════
-const LICENCIA_URL = 'https://raw.githubusercontent.com/TU_USUARIO/licencias-auditor/main/licencia.json';
+const LICENCIA_URL = 'https://github.com/Gustavo1986-2015/Auditor_Recorridos_SIMON/blob/main/auditor-recorridos/licencia.json';
 
 // ═══════════════════════════════════════════════════════
 // SI NO HAY INTERNET: true = deja abrir / false = bloquea
