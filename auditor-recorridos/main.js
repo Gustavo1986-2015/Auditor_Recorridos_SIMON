@@ -2,33 +2,42 @@ const { app, BrowserWindow, dialog } = require('electron');
 const https = require('https');
 
 // ═══════════════════════════════════════════════════════
-// LÍNEA QUE CAMBIÁS: pegá acá tu URL de GitHub Raw
+// URL sin refs/heads/ — formato correcto para raw
 // ═══════════════════════════════════════════════════════
-const LICENCIA_URL = 'https://raw.githubusercontent.com/Gustavo1986-2015/Auditor_Recorridos_SIMON/refs/heads/main/auditor-recorridos/licencia.json';
+const LICENCIA_URL = 'https://raw.githubusercontent.com/Gustavo1986-2015/Auditor_Recorridos_SIMON/main/auditor-recorridos/licencia.json';
 
 // ═══════════════════════════════════════════════════════
-// SI NO HAY INTERNET: true = deja abrir / false = bloquea
+// false = si no hay internet, bloquea (más seguro)
+// true  = si no hay internet, deja pasar
 // ═══════════════════════════════════════════════════════
-const PERMITIR_SIN_INTERNET = true;
+const PERMITIR_SIN_INTERNET = false;
 
 
-function verificarLicencia() {
-  return new Promise((resolve) => {
-    const req = https.get(LICENCIA_URL, (res) => {
+function httpGet(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, (res) => {
+      // Sigue redirects automáticamente
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        return httpGet(res.headers.location).then(resolve).catch(reject);
+      }
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          resolve(json.estado === 'activo');
-        } catch {
-          resolve(PERMITIR_SIN_INTERNET);
-        }
-      });
+      res.on('end', () => resolve(data));
     });
-    req.on('error', () => resolve(PERMITIR_SIN_INTERNET));
-    req.setTimeout(5000, () => { req.destroy(); resolve(PERMITIR_SIN_INTERNET); });
+    req.on('error', reject);
+    req.setTimeout(5000, () => { req.destroy(); reject(new Error('timeout')); });
   });
+}
+
+async function verificarLicencia() {
+  try {
+    const data = await httpGet(LICENCIA_URL);
+    const json = JSON.parse(data);
+    return json.estado === 'activo';
+  } catch (err) {
+    console.log('Error verificando licencia:', err.message);
+    return PERMITIR_SIN_INTERNET;
+  }
 }
 
 async function createWindow() {
